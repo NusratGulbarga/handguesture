@@ -1,0 +1,143 @@
+import cv2
+import mediapipe as mp
+import os
+import time
+import pyautogui  # For controlling keyboard actions
+import webbrowser  # To open Chrome and perform a search
+from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+from comtypes import CLSCTX_ALL
+
+# Initialize MediaPipe Hands
+mp_hands = mp.solutions.hands
+mp_drawing = mp.solutions.drawing_utils
+hands = mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.7)
+
+# Track Chrome process state
+chrome_open = False
+mute = False
+
+# Setup audio control using pycaw
+devices = AudioUtilities.GetSpeakers()
+interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+volume = interface.QueryInterface(IAudioEndpointVolume)
+
+def detect_gesture(landmarks):
+    """
+    Detects hand gestures: Open Palm, Closed Fist, Swipe Right, Swipe Left, Swipe Up, Swipe Down.
+    """
+    index_tip = landmarks[8].y
+    index_base = landmarks[5].y
+    middle_tip = landmarks[12].y
+    middle_base = landmarks[9].y
+    ring_tip = landmarks[16].y
+    ring_base = landmarks[13].y
+    pinky_tip = landmarks[20].y
+    pinky_base = landmarks[17].y
+    thumb_tip = landmarks[4].y
+    thumb_base = landmarks[2].y
+
+    # Open Palm: All fingers extended
+    if (landmarks[8].y < landmarks[6].y and 
+        landmarks[12].y < landmarks[10].y and 
+        landmarks[16].y < landmarks[14].y and 
+        landmarks[20].y < landmarks[18].y and 
+        abs(landmarks[4].x - landmarks[2].x) > 0.1):  # Thumb spread out
+        return "Open Palm"
+
+    # Closed Fist: All fingers folded
+    if (index_tip > index_base and 
+        middle_tip > middle_base and 
+        ring_tip > ring_base and 
+        pinky_tip > pinky_base and 
+        abs(landmarks[4].x - landmarks[2].x) < 0.02):  # Thumb close to palm
+        return "Closed Fist"
+
+    # Swipe Right (Next Page in Chrome)
+    if (landmarks[8].x - landmarks[5].x > 0.1 and 
+        landmarks[12].x - landmarks[9].x > 0.1):
+        return "Swipe Right"
+
+    # Swipe Left (Previous Page in Chrome)
+    if (landmarks[8].x - landmarks[5].x < -0.1 and 
+        landmarks[12].x - landmarks[9].x < -0.1):
+        return "Swipe Left"
+
+    # Swipe Up (Increase Volume)
+    if (index_tip < index_base and 
+        middle_tip < middle_base and 
+        ring_tip < ring_base and 
+        pinky_tip < pinky_base):
+        return "Swipe Up"
+
+    # Swipe Down (Decrease Volume)
+    if (index_tip > index_base and 
+        middle_tip > middle_base and 
+        ring_tip > ring_base and 
+        pinky_tip > pinky_base):
+        return "Swipe Down"
+
+    return "Unknown"
+
+# Open webcam
+cap = cv2.VideoCapture(0)
+
+while cap.isOpened():
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    frame = cv2.flip(frame, 1)  # Flip for mirror effect
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Convert to RGB
+    results = hands.process(rgb_frame)  # Process frame with MediaPipe
+
+    gesture = "No Hand Detected"
+
+    if results.multi_hand_landmarks:
+        for hand_landmarks in results.multi_hand_landmarks:
+            mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+            gesture = detect_gesture(hand_landmarks.landmark)
+
+            if gesture == "Open Palm" and not chrome_open:
+                print("🌍 Opening Chrome & Searching 'Free Music from Spotify'...")
+                webbrowser.open("https://www.google.com/search?q=Free+Music+from+Spotify")  # Open Google with query
+                chrome_open = True
+                time.sleep(2)
+
+            elif gesture == "Closed Fist":
+                mute = not mute  # Toggle mute state
+                volume.SetMute(mute, None)
+                print("🔇 Muting Volume..." if mute else "🔊 Unmuting Volume...")
+                time.sleep(1)
+
+            elif gesture == "Swipe Right" and chrome_open:
+                print("➡️ Next Page in Chrome")
+                pyautogui.hotkey("ctrl", "tab")  # Move to next tab
+                time.sleep(1)
+
+            elif gesture == "Swipe Left" and chrome_open:
+                print("⬅️ Previous Page in Chrome")
+                pyautogui.hotkey("ctrl", "shift", "tab")  # Move to previous tab
+                time.sleep(1)
+
+            elif gesture == "Swipe Up":
+                print("🔊 Increasing Volume...")
+                current_volume = volume.GetMasterVolumeLevelScalar()
+                volume.SetMasterVolumeLevelScalar(min(1.0, current_volume + 0.1), None)  # Increase volume
+                time.sleep(1)
+
+            elif gesture == "Swipe Down":
+                print("🔉 Decreasing Volume...")
+                current_volume = volume.GetMasterVolumeLevelScalar()
+                volume.SetMasterVolumeLevelScalar(max(0.0, current_volume - 0.1), None)  # Decrease volume
+                time.sleep(1)
+
+    # Display detected gesture on screen
+    cv2.putText(frame, f"Gesture: {gesture}", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 
+                1, (0, 255, 0), 2, cv2.LINE_AA)
+
+    cv2.imshow("Hand Gesture Control", frame)
+    if cv2.waitKey(1) & 0xFF == 27:  # Press ESC to exit
+        break
+
+cap.release()
+cv2.destroyAllWindows()
