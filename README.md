@@ -169,8 +169,8 @@ Feel free to fork the repo, add new features, or improve gesture accuracy. Contr
 
 ## 📬 Contact
 
-Created by [Your Name](https://github.com/yourusername)  
-📧 your.email@example.com  
-🔗 LinkedIn | Portfolio | Blog (add yours)
+Created by [Nusrat Gulbarga](https://www.linkedin.com/in/nusrat-gulbarga/)  
+📧 mnusratgulbarga.2@gmail.com  
+🔗 Portfolio: (https://medium.com/@devopsdyno)
 
 ---
